@@ -1,0 +1,335 @@
+---
+title: "NYPD Shooting Incidents"
+author: "Will"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+### All Libraries used in the analysis
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(leaflet)
+library(readxl)
+
+```
+
+###Retrieving both datasets
+```{r Retrieve_and_summarize_Data}
+#Retrieve the NYPD data
+nypd_data <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+options(max.print = 100)  # Set to your desired number
+#Read top 5 rows
+head(nypd_data)
+#Summarize the data
+summary(nypd_data)
+
+#read in NYC open data age group population for later analysis
+nyc_age_pop <- read_excel("/Users/willwalles/Desktop/nyc_open_data_agegroup_pop.xlsx")
+head(nyc_age_pop)
+```
+
+### data sleuthing on NYC Shooting Data
+```{r missing_data_search}
+#look to see if there is missing data in all columns
+missing_data_summary <- nypd_data %>% 
+  summarize_all(~sum(is.na(.)))
+#View(missing_data_summary)
+```
+```{r selecting_columns}
+#dropping location columns due to high volume of NA's
+nypd_selected <-select(nypd_data, INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, BORO, PRECINCT, JURISDICTION_CODE, STATISTICAL_MURDER_FLAG, PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_AGE_GROUP, VIC_SEX, VIC_RACE, Latitude, Longitude, Lon_Lat)
+
+#showcase dataset for presentation
+nypd_showcase <- select(nypd_selected, INCIDENT_KEY, BORO, PRECINCT, STATISTICAL_MURDER_FLAG)
+head(nypd_showcase)
+
+
+#converting OCCUR_DATE to date
+nypd_selected$OCCUR_DATE <- as.Date(nypd_selected$OCCUR_DATE, format="%m/%d/%Y")
+
+
+
+```
+
+
+```{r shootings_by_boros}
+#visualizing shootings by Boro's top 5, using nypd_selected because this analysis doesn't need this data
+shootings_by_boro <- nypd_selected %>%
+  group_by(BORO) %>%
+  summarise(total_shootings = n()) %>%
+  head(10)
+
+#setting boro colors for graphing
+# Define the color for each borough
+boro_colors <- c("BRONX" = "red", 
+                 "BROOKLYN" = "blue", 
+                 "MANHATTAN" = "green", 
+                 "QUEENS" = "purple", 
+                 "STATEN ISLAND" = "orange")
+
+ggplot(shootings_by_boro, aes(x = reorder(BORO, -total_shootings), y = total_shootings, fill = BORO)) +
+  geom_col() +
+  labs(title = "Total Shootings by Borough",
+       x = "Borough",
+       y = "Number of Shootings") +
+  scale_fill_manual(values = boro_colors) +  # Manually set colors
+  theme_minimal()
+
+
+```
+
+```{r murders_by_Boros}
+#top 5 Boro's by murder count
+murders_by_boro <- nypd_selected %>%
+  filter(STATISTICAL_MURDER_FLAG == 1) %>%
+  group_by(BORO) %>%
+  summarise(total_murders = n()) %>%
+  arrange(-total_murders) %>%
+  head(10)
+
+ggplot(murders_by_boro, aes(x = reorder(BORO, -total_murders), y = total_murders, fill = BORO)) +
+  geom_col() +
+  labs(title = "Total Murders by Borough",
+       x = "Borough",
+       y = "Number of Murders") +
+  scale_fill_manual(values = boro_colors) +  # Manually set colors
+  theme_minimal()
+```
+
+```{r top_precincts_for_shootings}
+# Top precincts for shootings
+shootings_by_precinct <- nypd_selected %>%
+  group_by(PRECINCT, BORO) %>%
+  summarise(total_shootings = n()) %>%
+  arrange(-total_shootings) %>%
+  head(10) # Adjust to get the top N precincts.
+
+
+ggplot(shootings_by_precinct, aes(x = reorder(paste(PRECINCT, BORO, sep = " - "), -total_shootings), y = total_shootings, fill=BORO)) +
+  geom_col() +
+  labs(title = "Total Shootings by Top Precincts",
+       x = "Precinct - Borough",
+       y = "Number of Shootings") +
+  #theme_minimal() +
+  scale_fill_manual(values = boro_colors) +  # Manually set colors
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+```{r top_precincts_for_murders}
+# Top precincts for murders
+murders_by_precinct <- nypd_selected %>%
+  filter(STATISTICAL_MURDER_FLAG == 1) %>%
+  group_by(PRECINCT, BORO) %>%
+  summarise(total_murders = n()) %>%
+  arrange(-total_murders) %>%
+  head(10) # Adjust to get the top N precincts.
+
+ggplot(murders_by_precinct, aes(x = reorder(paste(PRECINCT, BORO, sep = " - "), -total_murders), y = total_murders, fill=BORO)) +
+  geom_col() +
+  labs(title = "Total Murders by Top Precincts",
+       x = "Precinct - Borough",
+       y = "Number of Murders") +
+  #theme_minimal() +
+  scale_fill_manual(values = boro_colors) +  # Manually set colors
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+```{r Scatterplot_total_shootings_per_year}
+
+# Extract year and count shootings
+shootings_by_year <- nypd_selected %>%
+  mutate(year = as.numeric(format(as.Date(OCCUR_DATE, "%Y-%m-%d"), "%Y"))) %>%
+  group_by(year) %>%
+  tally()
+
+view(shootings_by_year)
+# Visualization
+ggplot(shootings_by_year, aes(x = year, y = n)) +
+  geom_point(aes(size = n), color = "blue") +
+  geom_line(aes(group = 1), color = "blue") +
+  scale_x_continuous(breaks = 2006:2022) +  # Ensuring all years are shown
+  labs(title = "Total Shootings per Year",
+       x = "Year",
+       y = "Number of Shootings") +
+  theme_minimal()
+
+```
+```{r linegraph_total_murders_per_year}
+# extract only murders
+murders_only <- nypd_selected %>% filter(STATISTICAL_MURDER_FLAG == 'TRUE')
+
+# Extract year and count shootings
+murders_by_year <- murders_only %>%
+  mutate(year = as.numeric(format(as.Date(OCCUR_DATE, "%Y-%m-%d"), "%Y"))) %>%
+  group_by(year) %>%
+  tally()
+
+view(murders_by_year)
+# Visualization
+ggplot(murders_by_year, aes(x = year, y = n)) +
+  geom_point(aes(size = n), color = "blue") +
+  geom_line(aes(group = 1), color = "blue") +
+  scale_x_continuous(breaks = 2006:2022) +  # Ensuring all years are shown
+  labs(title = "Total Murders per Year",
+       x = "Year",
+       y = "Number of Murders") +
+  theme_minimal()
+
+```
+
+```{r YoY_shootings_percent_increase_decrease}
+
+# Creating shootings by year
+shootings_by_year <- nypd_selected %>%
+  mutate(year = as.numeric(format(as.Date(OCCUR_DATE, "%Y-%m-%d"), "%Y"))) %>%
+  group_by(year) %>%
+  tally()
+
+# Calculate percent change from the previous year
+shootings_by_year <- shootings_by_year %>%
+  arrange(year) %>%
+  mutate(percent_change = (n / lag(n) - 1) * 100)
+
+# Replace NA in the first row (no previous year data) with 0 or appropriate value
+shootings_by_year$percent_change[is.na(shootings_by_year$percent_change)] <- 0
+
+shootings_by_year <- shootings_by_year %>% rename(count_of_shootings = n)
+
+# View the dataframe
+head(shootings_by_year)
+
+
+
+ggplot(shootings_by_year, aes(x = year, y = percent_change)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Year-over-Year Percent Change in Shootings",
+       x = "Year",
+       y = "Percent Change") +
+  theme_minimal() +
+  scale_x_continuous(breaks = 2006:2022)
+
+```
+```{r YoY_murders_percent_increase_decrease}
+
+# Creating shootings by year
+murders_by_year <- nypd_selected %>%
+  mutate(year = as.numeric(format(as.Date(OCCUR_DATE, "%Y-%m-%d"), "%Y"))) %>%
+  filter(STATISTICAL_MURDER_FLAG == 'TRUE') %>%
+  group_by(year) %>%
+  tally()
+
+# Calculate percent change from the previous year
+murders_by_year <- murders_by_year %>%
+  arrange(year) %>%
+  mutate(percent_change = (n / lag(n) - 1) * 100)
+
+# Replace NA in the first row (no previous year data) with 0 or appropriate value
+murders_by_year$percent_change[is.na(murders_by_year$percent_change)] <- 0
+
+murders_by_year <- murders_by_year %>% rename(count_of_murders = n)
+
+# View the dataframe
+head(murders_by_year)
+
+
+
+ggplot(murders_by_year, aes(x = year, y = percent_change)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Year-over-Year Percent Change in Murders",
+       x = "Year",
+       y = "Percent Change") +
+  theme_minimal() +
+  scale_x_continuous(breaks = 2006:2022)
+
+```
+
+
+###Bringing in Age Demographics data
+```{r nyc_age_pop_working}
+#nyc_age_pop
+
+nyc_age_pop_selected <- select(nyc_age_pop, "Borough" , "2020", "Category")
+
+nyc_age_pop_total <- nyc_age_pop_selected %>% filter(Borough == 'NYC Total' & !is.na(Category))
+nyc_age_pop_total
+
+summed_by_category <- nyc_age_pop_total %>%
+  group_by(Category) %>%
+  summarise(total_population = sum(`2020`, na.rm = TRUE))
+
+# Calculate the total sum
+total_sum <- sum(nyc_age_pop_total$`2020`, na.rm = TRUE)
+
+# Calculate the percentage for each category
+percentage_by_category <- nyc_age_pop_total %>%
+  group_by(Category) %>%
+  summarise(total = sum(`2020`, na.rm = TRUE)) %>%
+  mutate(percentage = (total / total_sum) * 100)
+
+# Plot the data
+ggplot(percentage_by_category, aes(x = Category, y = percentage, fill = Category)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Percentage of Population by Category (2020)",
+       x = "Category",
+       y = "Percentage (%)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r vic_age_group_analysis_by_boro}
+
+#CLEAN VIC_AGE_GROUP_DATA
+nypd_selected_vic_age_cleaned <- nypd_selected %>% filter(VIC_AGE_GROUP != '1022' & VIC_AGE_GROUP != 'UNKNOWN') 
+
+shootings_age_group_2022 <- nypd_selected_vic_age_cleaned %>% filter(format(OCCUR_DATE, "%Y") =="2022") %>%
+  group_by(BORO, VIC_AGE_GROUP) %>%
+  summarise(count = n(), .groups = "drop")
+
+
+
+# Plot
+ggplot(shootings_age_group_2022, aes(x = VIC_AGE_GROUP, y = count, fill = BORO)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Count of Shootings by Victim Age Group and Borough (2022)",
+       x = "Victim Age Group",
+       y = "Count of Shootings") +
+  theme_minimal() +
+  scale_fill_manual(values = boro_colors) +  # Manually set colors
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+###Joining NYC shootings data with Age demographics data
+```{r combining_age_group_data}
+# Join the dataframes on the category column
+combined_data <- shootings_age_group_2022 %>%
+  left_join(percentage_by_category, by = c("VIC_AGE_GROUP" = "Category"))
+
+# Calculate the ratio for the secondary axis
+max_shootings <- max(combined_data$count)
+max_percentage <- max(combined_data$percentage)
+ratio <- max_shootings / max_percentage
+
+# Create the plot
+ggplot(combined_data) +
+  geom_bar(aes(x = VIC_AGE_GROUP, y = count, fill = BORO), stat = "identity", position = position_dodge()) +
+  geom_line(aes(x = VIC_AGE_GROUP, y = percentage * ratio, group = 1, color = "Population Percentage"), size = 1) +
+  scale_y_continuous(
+    "Count of Shootings",
+    sec.axis = sec_axis(~./ratio, name = "Population Percentage (%)")
+  ) +
+  labs(
+    title = "Count of Shootings by Victim Age Group and Population Percentage (2022)",
+    x = "Victim Age Group"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = boro_colors) +  # Manually set colors
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  scale_color_manual(values = "blue", labels = "Population Percentage", guide = "none")
+```
