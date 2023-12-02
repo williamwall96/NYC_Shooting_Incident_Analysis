@@ -26,7 +26,7 @@ head(nypd_data)
 summary(nypd_data)
 
 #read in NYC open data age group population for later analysis
-nyc_age_pop <- read_excel("/Users/willwalles/Desktop/nyc_open_data_agegroup_pop.xlsx")
+nyc_age_pop <- read_excel("data/nyc_open_data_agegroup_pop.xlsx")
 head(nyc_age_pop)
 ```
 
