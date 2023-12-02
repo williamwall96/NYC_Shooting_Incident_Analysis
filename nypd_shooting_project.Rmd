@@ -6,14 +6,19 @@ output: pdf_document
 ---
 ### All Libraries used in the analysis
 ```{r setup, include=FALSE, message=FALSE, warning=FALSE}
-library(tidyverse)
-library(dplyr)
-library(ggplot2)
-library(sf)
-library(leaflet)
-library(readxl)
+# Packages needed
+packages_needed <- c("tidyverse", "dplyr", "ggplot2", "sf", "leaflet", "readxl")
+
+# Install any missing packages
+for (pkg in packages_needed) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
 
 ```
+
 
 ###Retrieving both datasets
 ```{r Retrieve_and_summarize_Data}
@@ -26,9 +31,6 @@ head(nypd_data)
 summary(nypd_data)
 
 #read in NYC open data age group population for later analysis
-#nyc_age_pop <- read_excel("data/nyc_open_data_agegroup_pop.xlsx")
-#head(nyc_age_pop)
-
 url <- "https://github.com/williamwall96/NYC_Shooting_Incident_Analysis/raw/master/data/nyc_open_data_agegroup_pop.xlsx"
 
 # Download the file to a temporary location
