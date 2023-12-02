@@ -26,8 +26,23 @@ head(nypd_data)
 summary(nypd_data)
 
 #read in NYC open data age group population for later analysis
-nyc_age_pop <- read_excel("data/nyc_open_data_agegroup_pop.xlsx")
+#nyc_age_pop <- read_excel("data/nyc_open_data_agegroup_pop.xlsx")
+#head(nyc_age_pop)
+
+url <- "https://github.com/williamwall96/NYC_Shooting_Incident_Analysis/raw/master/data/nyc_open_data_agegroup_pop.xlsx"
+
+# Download the file to a temporary location
+temp_file <- tempfile(fileext = ".xlsx")
+download.file(url, temp_file, mode = "wb")
+
+# Read the downloaded file
+nyc_age_pop <- readxl::read_excel(temp_file)
+
+# Display the first few rows
 head(nyc_age_pop)
+
+# Optionally, remove the temporary file
+unlink(temp_file)
 ```
 
 ### data sleuthing on NYC Shooting Data
